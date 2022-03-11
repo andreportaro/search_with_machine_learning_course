@@ -141,3 +141,4 @@ wget
 products.test
 products.train
 model_titles.bin
+model_query.bin
