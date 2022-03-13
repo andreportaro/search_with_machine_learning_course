@@ -4,10 +4,44 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 import numpy as np
 import csv
+import re
 
 # Useful if you want to perform stemming.
 import nltk
+from nltk.corpus import stopwords
+
+def cleanText(query):
+    query = query.lower()
+    word_tokens = query.split(" ")
+ 
+    filtered_sentence = [w for w in word_tokens if not w in stop_words]
+
+    if len(filtered_sentence) == 0:
+        return np.nan
+
+    return " ".join(filtered_sentence)
+
+def rollupCategory(category):
+    if category not in category_counts:
+        # unsure why this would happen
+        print("Category not in any category counts", category)
+        return category
+
+    if category_counts[category] < min_queries:
+        parent = parents_df[parents_df['category'] == category]
+        if len(parent) == 0:
+            # No parent or is parent
+            return category
+        
+        return parent.iloc[0]['parent']
+
+    print("Category greater than category counts: ", category, category_counts[category])
+    return category
+
 stemmer = nltk.stem.PorterStemmer()
+
+nltk.download('stopwords')
+stop_words = set(stopwords.words('english'))
 
 categories_file_name = r'/workspace/datasets/product_data/categories/categories_0001_abcat0010000_to_pcmcat99300050000.xml'
 
@@ -48,9 +82,11 @@ parents_df = pd.DataFrame(list(zip(categories, parents)), columns =['category', 
 df = pd.read_csv(queries_file_name)[['category', 'query']]
 df = df[df['category'].isin(categories)]
 
-# IMPLEMENT ME: Convert queries to lowercase, and optionally implement other normalization, like stemming.
+# Cleaning the query
+df['query'] = df['query'].apply(cleanText)
 
-# IMPLEMENT ME: Roll up categories to ancestors to satisfy the minimum number of queries per category.
+# Rolling up categories
+df['category'] = df['category'].apply(rollupCategory)
 
 # Create labels in fastText format.
 df['label'] = '__label__' + df['category']
@@ -59,3 +95,27 @@ df['label'] = '__label__' + df['category']
 df = df[df['category'].isin(categories)]
 df['output'] = df['label'] + ' ' + df['query']
 df[['output']].to_csv(output_file_name, header=False, sep='|', escapechar='\\', quoting=csv.QUOTE_NONE, index=False)
+
+"""
+ import fasttext
+
+data = pd.read_csv(output_file_name).sample(100000)
+
+train = data.head(50000)
+test = data.tail(50000)
+
+np.savetxt(r"/workspace/datasets/query_training.txt", train.values, fmt='%s')
+np.savetxt(r"/workspace/datasets/query_test.txt", test.values, fmt='%s')
+
+model = fasttext.train_supervised(input="/workspace/datasets/query_training.txt")
+
+model.predict("apple ipad 2 16 GB")
+
+model.test("/workspace/datasets/query_test.txt")
+
+model = fasttext.train_supervised(input="/workspace/datasets/query_training.txt", lr=0.5, epoch=25, wordNgrams=2)
+
+model.test("/workspace/datasets/query_test.txt")
+
+model.save_model("/workspace/search_with_machine_learning_course/model_query.bin")
+"""
